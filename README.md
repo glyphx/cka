@@ -53,7 +53,10 @@ terraform apply
 After the Terraform configuration completes, your Kubernetes cluster will be ready. The master node will have `kubectl` configured to manage the cluster. You can SSH into the master node to start managing your cluster:
 
 ```sh
-gcloud compute ssh --zone "us-west1-a" "k8s-master" --project "your-gcp-project-id"
+gcloud secrets versions access latest --secret="kubernetes-key" > ~/.ssh/kubernetes_key && \
+chmod 600 ~/.ssh/kubernetes_key && \
+ssh-keygen -y -f ~/.ssh/kubernetes_key > ~/.ssh/kubernetes_key.pub && \
+gcloud compute ssh --zone "us-west1-a" "k8s-master" --ssh-key-file=~/.ssh/kubernetes_key
 ```
 
 Once logged into the master node, you can use `kubectl` to manage your cluster:
