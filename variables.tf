@@ -52,3 +52,14 @@ variable "service_account_email" {
   default     = "cka-svc-acct@cka-exam-423318.iam.gserviceaccount.com"
 }
 
+variable "control_plane_count" {
+  description = "Number of control plane nodes"
+  type        = number
+  default     = 1
+}
+
+variable "worker_count" {
+  description = "Number of worker nodes"
+  type        = number
+  default     = 2
+}
