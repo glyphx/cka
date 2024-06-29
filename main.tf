@@ -98,14 +98,14 @@ resource "google_compute_instance" "k8s-master" {
   echo "Initializing Kubernetes master" | sudo tee -a /var/log/install.log
   sudo kubeadm init --control-plane-endpoint="$MASTER_INTERNAL_IP:6443" --pod-network-cidr=10.244.0.0/16 | sudo tee -a /var/log/install.log
 
-  # Set up kubeconfig for ubuntu user
-  sudo mkdir -p /home/ubuntu/.kube | sudo tee -a /var/log/install.log
-  sudo cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config | sudo tee -a /var/log/install.log
-  sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config | sudo tee -a /var/log/install.log
+  # Set up kubeconfig for user
+  sudo mkdir -p /home/${var.username}/.kube | sudo tee -a /var/log/install.log
+  sudo cp -i /etc/kubernetes/admin.conf /home/${var.username}/.kube/config | sudo tee -a /var/log/install.log
+  sudo chown ${var.username}:${var.username} /home/${var.username}/.kube/config | sudo tee -a /var/log/install.log
 
   # Ensure the kubeconfig is used
-  echo "export KUBECONFIG=/home/ubuntu/.kube/config" | sudo tee -a /home/ubuntu/.bashrc
-  export KUBECONFIG=/home/ubuntu/.kube/config
+  echo "export KUBECONFIG=/home/${var.username}/.kube/config" | sudo tee -a /home/${var.username}/.bashrc
+  export KUBECONFIG=/home/${var.username}/.kube/config
 
   # Ensure the necessary sysctl params are set
   sudo sysctl net.bridge.bridge-nf-call-iptables=1 | sudo tee -a /var/log/install.log
@@ -177,7 +177,7 @@ resource "null_resource" "master_ready" {
     }
 
     inline = [
-      "export KUBECONFIG=/home/ubuntu/.kube/config",
+      "export KUBECONFIG=/home/${var.username}/.kube/config",
       "while ! kubectl get nodes | grep 'Ready' | grep 'control-plane'; do echo 'Waiting for Kubernetes master to be ready...' | sudo tee -a /var/log/install.log && sleep 10; done"
     ]
   }
@@ -206,7 +206,7 @@ resource "google_compute_instance" "k8s-control-plane" {
   exec > >(sudo tee /var/log/startup-script.log) 2>&1
   echo "Starting control plane node setup" | sudo tee -a /var/log/install.log
   sudo apt-get update | sudo tee -a /var/log/install.log
-  # Adding Kubernetes APT repository and key
+  # Adding Kubernetes APT repository and
   sudo mkdir -p /etc/apt/keyrings | sudo tee -a /var/log/install.log
   curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg | sudo tee -a /var/log/install.log
   echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list | sudo tee -a /var/log/install.log
@@ -225,14 +225,14 @@ resource "google_compute_instance" "k8s-control-plane" {
     sleep 10
   done
 
-  # Set up kubeconfig for ubuntu user
-  sudo mkdir -p /home/ubuntu/.kube | sudo tee -a /var/log/install.log
-  sudo cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config | sudo tee -a /var/log/install.log
-  sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config | sudo tee -a /var/log/install.log
+  # Set up kubeconfig for user
+  sudo mkdir -p /home/${var.username}/.kube | sudo tee -a /var/log/install.log
+  sudo cp -i /etc/kubernetes/admin.conf /home/${var.username}/.kube/config | sudo tee -a /var/log/install.log
+  sudo chown ${var.username}:${var.username} /home/${var.username}/.kube/config | sudo tee -a /var/log/install.log
 
   # Ensure the kubeconfig is used
-  echo "export KUBECONFIG=/home/ubuntu/.kube/config" | sudo tee -a /home/ubuntu/.bashrc
-  export KUBECONFIG=/home/ubuntu/.kube/config
+  echo "export KUBECONFIG=/home/${var.username}/.kube/config" | sudo tee -a /home/${var.username}/.bashrc
+  export KUBECONFIG=/home/${var.username}/.kube/config
 
   # Ensure the necessary sysctl params are set
   sudo sysctl net.bridge.bridge-nf-call-iptables=1 | sudo tee -a /var/log/install.log
@@ -264,15 +264,13 @@ resource "null_resource" "control_plane_ready" {
     }
 
     inline = [
-      "export KUBECONFIG=/home/ubuntu/.kube/config",
+      "export KUBECONFIG=/home/${var.username}/.kube/config",
       "for node in ${join(" ", concat([google_compute_instance.k8s-master.name], google_compute_instance.k8s-control-plane[*].name))}; do while true; do STATUS=$(kubectl get nodes $node -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'); if [ \"$STATUS\" = \"True\" ]; then echo \"Node $node is Ready.\"; break; else echo \"Waiting for node $node to be ready...\"; sleep 10; fi; done; done"
     ]
   }
 
   depends_on = [google_compute_instance.k8s-control-plane]
 }
-
-
 
 resource "google_compute_instance" "k8s-worker" {
   count        = 2
@@ -351,17 +349,13 @@ resource "null_resource" "workers_ready" {
     }
 
     inline = [
-      "export KUBECONFIG=/home/ubuntu/.kube/config",
+      "export KUBECONFIG=/home/${var.username}/.kube/config",
       "for node in ${join(" ", google_compute_instance.k8s-worker[*].name)}; do while true; do STATUS=$(kubectl get nodes $node -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'); if [ \"$STATUS\" = \"True\" ]; then echo \"Node $node is Ready.\"; break; else echo \"Waiting for node $node to be ready...\"; sleep 10; fi; done; done"
     ]
   }
 
-  depends_on = [null_resource.control_plane_ready]
+  depends_on = [null_resource.master_ready]
 }
-
-
-
-
 
 resource "google_compute_firewall" "default" {
   name    = "default-allow-ssh-${random_id.firewall_id.hex}"
@@ -405,3 +399,4 @@ resource "random_id" "firewall_id" {
 output "master_ip" {
   value = google_compute_instance.k8s-master.network_interface.0.access_config.0.nat_ip
 }
+

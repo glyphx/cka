@@ -37,7 +37,7 @@ variable "image" {
 variable "username" {
   description = "The username for SSH access"
   type        = string
-  default     = "ubuntu"
+  default     = "glyph"
 }
 
 variable "pod_network_cidr" {
